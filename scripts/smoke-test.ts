@@ -7,7 +7,9 @@ function assert(condition: boolean, message: string) {
 }
 
 async function main() {
-  const [deployer, trader, lpReceiver] = await ethers.getSigners();
+  const [deployer] = await ethers.getSigners();
+  const trader = deployer;
+  const lpReceiver = deployer;
   const manifest = JSON.parse(readFileSync(join("deployments", network.name, "minimal-topaz.json"), "utf8"));
   const token = await ethers.deployContract("TestToken", ["Smoke Token", "SMOKE"]);
   await token.waitForDeployment();
@@ -38,14 +40,15 @@ async function main() {
   assert(reserve0Before > 0n && reserve1Before > 0n, "Initial reserves are empty");
 
   const route = [{ from: manifest.contracts.WBNB, to: await token.getAddress(), stable: false, factory: manifest.contracts.PoolFactory }];
+  const traderTokenBeforeBuy = await token.balanceOf(trader.address);
   await router.connect(trader).swapExactETHForTokens(0, route, trader.address, Math.floor(Date.now() / 1000) + 3600, { value: ethers.parseEther("0.1") });
 
-  const traderTokenBalance = await token.balanceOf(trader.address);
-  assert(traderTokenBalance > 0n, "Buy produced no smoke tokens");
+  const traderTokenBought = (await token.balanceOf(trader.address)) - traderTokenBeforeBuy;
+  assert(traderTokenBought > 0n, "Buy produced no smoke tokens");
 
   const sellRoute = [{ from: await token.getAddress(), to: manifest.contracts.WBNB, stable: false, factory: manifest.contracts.PoolFactory }];
-  await token.connect(trader).approve(manifest.contracts.Router, traderTokenBalance);
-  await router.connect(trader).swapExactTokensForETH(traderTokenBalance, 0, sellRoute, trader.address, Math.floor(Date.now() / 1000) + 3600);
+  await token.connect(trader).approve(manifest.contracts.Router, traderTokenBought);
+  await router.connect(trader).swapExactTokensForETH(traderTokenBought, 0, sellRoute, trader.address, Math.floor(Date.now() / 1000) + 3600);
 
   const tokenBeforeClaim = await token.balanceOf(lpReceiver.address);
   const wbnb = await ethers.getContractAt("TestWBNB", manifest.contracts.WBNB);
