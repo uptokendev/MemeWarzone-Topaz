@@ -59,15 +59,26 @@ async function main() {
   assert(reserve0Before > 0n && reserve1Before > 0n, "Initial reserves are empty");
 
   const route = [{ from: manifest.contracts.WBNB, to: await token.getAddress(), stable: false, factory: manifest.contracts.PoolFactory }];
-  const traderTokenBeforeBuy = await token.balanceOf(trader.address);
-  await waitFor(router.connect(trader).swapExactETHForTokens(0, route, trader.address, Math.floor(Date.now() / 1000) + 3600, { value: buyBnb }));
+  const quotedBuy = await router.getAmountsOut(buyBnb, route);
+  const expectedBuyOut = quotedBuy[quotedBuy.length - 1];
+  assert(expectedBuyOut > 0n, "Buy quote produced zero smoke tokens");
 
-  const traderTokenBought = (await token.balanceOf(trader.address)) - traderTokenBeforeBuy;
-  assert(traderTokenBought > 0n, "Buy produced no smoke tokens");
+  const traderTokenBeforeBuy = await token.balanceOf(trader.address);
+  await waitFor(router.connect(trader).swapExactETHForTokens(expectedBuyOut, route, trader.address, Math.floor(Date.now() / 1000) + 3600, { value: buyBnb }));
+
+  const traderTokenAfterBuy = await token.balanceOf(trader.address);
+  const traderTokenBought = traderTokenAfterBuy - traderTokenBeforeBuy;
+  assert(
+    traderTokenBought >= expectedBuyOut,
+    `Buy token delta below quote: expected at least ${expectedBuyOut.toString()}, before ${traderTokenBeforeBuy.toString()}, after ${traderTokenAfterBuy.toString()}`
+  );
 
   const sellRoute = [{ from: await token.getAddress(), to: manifest.contracts.WBNB, stable: false, factory: manifest.contracts.PoolFactory }];
+  const quotedSell = await router.getAmountsOut(traderTokenBought, sellRoute);
+  const expectedSellOut = quotedSell[quotedSell.length - 1];
+  assert(expectedSellOut > 0n, "Sell quote produced zero WBNB");
   await waitFor(token.connect(trader).approve(manifest.contracts.Router, traderTokenBought));
-  await waitFor(router.connect(trader).swapExactTokensForETH(traderTokenBought, 0, sellRoute, trader.address, Math.floor(Date.now() / 1000) + 3600));
+  await waitFor(router.connect(trader).swapExactTokensForETH(traderTokenBought, expectedSellOut, sellRoute, trader.address, Math.floor(Date.now() / 1000) + 3600));
 
   const tokenBeforeClaim = await token.balanceOf(lpReceiver.address);
   const wbnb = await ethers.getContractAt("TestWBNB", manifest.contracts.WBNB);
@@ -87,6 +98,8 @@ async function main() {
   console.log(`Smoke test passed for pool ${poolAddress}`);
   console.log(`Liquidity BNB: ${liquidityBnb.toString()}`);
   console.log(`Buy BNB: ${buyBnb.toString()}`);
+  console.log(`Buy token quote: ${expectedBuyOut.toString()}`);
+  console.log(`Sell WBNB quote: ${expectedSellOut.toString()}`);
   console.log(`Claimed token fees: ${tokenClaimed.toString()}`);
   console.log(`Claimed WBNB fees: ${wbnbClaimed.toString()}`);
 }
