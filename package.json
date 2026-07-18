@@ -7,6 +7,7 @@
     "test": "hardhat test",
     "lint": "tsc --noEmit",
     "check:contract-size": "hardhat size-contracts || hardhat compile",
+    "deploy:check-env:bsc-testnet": "node scripts/check-deploy-env.cjs bscTestnet",
     "deploy:testnet": "hardhat run deploy/00_deploy_minimal_topaz.ts --network bscTestnet",
     "verify:testnet": "hardhat run scripts/verify-deployment.ts --network bscTestnet",
     "smoke:testnet": "hardhat run scripts/smoke-test.ts --network bscTestnet",
