@@ -17,7 +17,7 @@ contract Router is IRouter {
     address public immutable factoryRegistry;
     address public immutable defaultFactory;
     address public immutable voter;
-    IWETH public immutable weth;
+    address public immutable weth;
     uint256 internal constant MINIMUM_LIQUIDITY = 10 ** 3;
 
     modifier ensure(uint256 deadline) {
@@ -29,11 +29,11 @@ contract Router is IRouter {
         factoryRegistry = factoryRegistry_;
         defaultFactory = factory_;
         voter = voter_;
-        weth = IWETH(weth_);
+        weth = weth_;
     }
 
     receive() external payable {
-        if (msg.sender != address(weth)) revert OnlyWETH();
+        if (msg.sender != weth) revert OnlyWETH();
     }
 
     function sortTokens(address tokenA, address tokenB) public pure returns (address token0, address token1) {
@@ -94,31 +94,31 @@ contract Router is IRouter {
     }
 
     function addLiquidityETH(address token, bool stable, uint256 amountTokenDesired, uint256 amountTokenMin, uint256 amountETHMin, address to, uint256 deadline) external payable ensure(deadline) returns (uint256 amountToken, uint256 amountETH, uint256 liquidity) {
-        (amountToken, amountETH) = _addLiquidity(token, address(weth), stable, amountTokenDesired, msg.value, amountTokenMin, amountETHMin);
-        address pool = poolFor(token, address(weth), stable, defaultFactory);
+        (amountToken, amountETH) = _addLiquidity(token, weth, stable, amountTokenDesired, msg.value, amountTokenMin, amountETHMin);
+        address pool = poolFor(token, weth, stable, defaultFactory);
         IERC20(token).safeTransferFrom(msg.sender, pool, amountToken);
-        weth.deposit{value: amountETH}();
-        require(weth.transfer(pool, amountETH), "WETH_TRANSFER_FAILED");
+        IWETH(weth).deposit{value: amountETH}();
+        require(IWETH(weth).transfer(pool, amountETH), "WETH_TRANSFER_FAILED");
         liquidity = IPool(pool).mint(to);
         if (msg.value > amountETH) _safeTransferETH(msg.sender, msg.value - amountETH);
     }
 
     function swapExactETHForTokens(uint256 amountOutMin, Route[] calldata routes, address to, uint256 deadline) external payable ensure(deadline) returns (uint256[] memory amounts) {
-        if (routes.length == 0 || routes[0].from != address(weth)) revert InvalidPath();
+        if (routes.length == 0 || routes[0].from != weth) revert InvalidPath();
         amounts = getAmountsOut(msg.value, routes);
         if (amounts[amounts.length - 1] < amountOutMin) revert InsufficientOutputAmount();
-        weth.deposit{value: amounts[0]}();
-        require(weth.transfer(poolFor(routes[0].from, routes[0].to, routes[0].stable, routes[0].factory), amounts[0]), "WETH_TRANSFER_FAILED");
+        IWETH(weth).deposit{value: amounts[0]}();
+        require(IWETH(weth).transfer(poolFor(routes[0].from, routes[0].to, routes[0].stable, routes[0].factory), amounts[0]), "WETH_TRANSFER_FAILED");
         _swap(amounts, routes, to);
     }
 
     function swapExactTokensForETH(uint256 amountIn, uint256 amountOutMin, Route[] calldata routes, address to, uint256 deadline) external ensure(deadline) returns (uint256[] memory amounts) {
-        if (routes.length == 0 || routes[routes.length - 1].to != address(weth)) revert InvalidPath();
+        if (routes.length == 0 || routes[routes.length - 1].to != weth) revert InvalidPath();
         amounts = getAmountsOut(amountIn, routes);
         if (amounts[amounts.length - 1] < amountOutMin) revert InsufficientOutputAmount();
         IERC20(routes[0].from).safeTransferFrom(msg.sender, poolFor(routes[0].from, routes[0].to, routes[0].stable, routes[0].factory), amountIn);
         _swap(amounts, routes, address(this));
-        weth.withdraw(amounts[amounts.length - 1]);
+        IWETH(weth).withdraw(amounts[amounts.length - 1]);
         _safeTransferETH(to, amounts[amounts.length - 1]);
     }
 
