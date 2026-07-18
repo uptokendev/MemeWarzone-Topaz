@@ -27,7 +27,8 @@ async function main() {
   const suffix = Math.floor(Date.now() / 1000).toString(36).slice(-6).toUpperCase();
   const token = await ethers.deployContract("TestToken", [`Smoke Token ${suffix}`, `SMK${suffix}`]);
   await token.waitForDeployment();
-  await waitFor(token.mint(deployer.address, liquidityTokens * 20n));
+  const mintedTokens = liquidityTokens * 20n;
+  await waitFor(token.mint(deployer.address, mintedTokens));
   await waitFor(token.approve(manifest.contracts.Router, liquidityTokens));
 
   assert((await token.balanceOf(deployer.address)) >= liquidityTokens, "Deployer smoke-token balance is below liquidity amount");
@@ -63,22 +64,22 @@ async function main() {
   const expectedBuyOut = quotedBuy[quotedBuy.length - 1];
   assert(expectedBuyOut > 0n, "Buy quote produced zero smoke tokens");
 
-  const traderTokenBeforeBuy = await token.balanceOf(trader.address);
   await waitFor(router.connect(trader).swapExactETHForTokens(expectedBuyOut, route, trader.address, Math.floor(Date.now() / 1000) + 3600, { value: buyBnb }));
 
   const traderTokenAfterBuy = await token.balanceOf(trader.address);
-  const traderTokenBought = traderTokenAfterBuy - traderTokenBeforeBuy;
+  const expectedBalanceAfterBuy = mintedTokens - liquidityTokens + expectedBuyOut;
   assert(
-    traderTokenBought >= expectedBuyOut,
-    `Buy token delta below quote: expected at least ${expectedBuyOut.toString()}, before ${traderTokenBeforeBuy.toString()}, after ${traderTokenAfterBuy.toString()}`
+    traderTokenAfterBuy >= expectedBalanceAfterBuy,
+    `Buy token balance below expected post-liquidity balance: expected at least ${expectedBalanceAfterBuy.toString()}, got ${traderTokenAfterBuy.toString()}`
   );
 
+  const sellAmount = expectedBuyOut;
   const sellRoute = [{ from: await token.getAddress(), to: manifest.contracts.WBNB, stable: false, factory: manifest.contracts.PoolFactory }];
-  const quotedSell = await router.getAmountsOut(traderTokenBought, sellRoute);
+  const quotedSell = await router.getAmountsOut(sellAmount, sellRoute);
   const expectedSellOut = quotedSell[quotedSell.length - 1];
   assert(expectedSellOut > 0n, "Sell quote produced zero WBNB");
-  await waitFor(token.connect(trader).approve(manifest.contracts.Router, traderTokenBought));
-  await waitFor(router.connect(trader).swapExactTokensForETH(traderTokenBought, expectedSellOut, sellRoute, trader.address, Math.floor(Date.now() / 1000) + 3600));
+  await waitFor(token.connect(trader).approve(manifest.contracts.Router, sellAmount));
+  await waitFor(router.connect(trader).swapExactTokensForETH(sellAmount, expectedSellOut, sellRoute, trader.address, Math.floor(Date.now() / 1000) + 3600));
 
   const tokenBeforeClaim = await token.balanceOf(lpReceiver.address);
   const wbnb = await ethers.getContractAt("TestWBNB", manifest.contracts.WBNB);
