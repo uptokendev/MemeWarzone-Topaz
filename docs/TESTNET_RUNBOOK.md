@@ -2,13 +2,19 @@
 
 ## Environment
 
-Create `.env` from `.env.example` and set:
+Create `.env` in the root of `MemeWarzone-Topaz`, next to `package.json`. This is separate from the MemeWarzone launchpad `.env`.
 
-- `BSC_TESTNET_RPC_URL`
-- `PRIVATE_KEY_DEPLOY`
-- `BSCSCAN_API_KEY`
-- `DEPLOYER_ADDRESS`
-- `VOLATILE_FEE_BPS=100`
+```env
+BSC_TESTNET_RPC_URL=https://data-seed-prebsc-1-s1.bnbchain.org:8545
+PRIVATE_KEY_DEPLOY=0xYOUR_FUNDED_TESTNET_DEPLOYER_PRIVATE_KEY
+BSCSCAN_API_KEY=
+DEPLOYER_ADDRESS=0xYOUR_DEPLOYER_ADDRESS
+VOLATILE_FEE_BPS=100
+```
+
+Backward-compatible aliases are also accepted: `BSC_TESTNET_RPC` for `BSC_TESTNET_RPC_URL`, and `DEPLOYER_PK` for `PRIVATE_KEY_DEPLOY`.
+
+`BSCSCAN_API_KEY` is optional for deploying and smoke testing, but required for explorer verification. `DEPLOYER_ADDRESS` is recorded for operator clarity and checked for address format when set.
 
 ## Deployment
 
@@ -16,11 +22,14 @@ Create `.env` from `.env.example` and set:
 npm ci
 npm run compile
 npm test
+npm run deploy:check-env:bsc-testnet
 npm run deploy:testnet
 npm run verify:testnet
 npm run smoke:testnet
 npm run export:testnet
 ```
+
+The deploy command creates `deployments/bscTestnet/minimal-topaz.json`. Copy that manifest into the MemeWarzone launchpad repo at the same relative path, or set MemeWarzone's `TOPAZ_MANIFEST` to this file's absolute path.
 
 ## Acceptance Gates
 
