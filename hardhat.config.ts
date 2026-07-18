@@ -5,7 +5,9 @@ import { HardhatUserConfig } from "hardhat/config";
 
 dotenv.config();
 
-const privateKey = process.env.PRIVATE_KEY_DEPLOY;
+const bscTestnetRpcUrl = process.env.BSC_TESTNET_RPC_URL || process.env.BSC_TESTNET_RPC || "";
+const privateKey = process.env.PRIVATE_KEY_DEPLOY || process.env.DEPLOYER_PK || "";
+const normalizedPrivateKey = privateKey && privateKey.startsWith("0x") ? privateKey : privateKey ? `0x${privateKey}` : "";
 
 const config: HardhatUserConfig = {
   solidity: {
@@ -23,9 +25,9 @@ const config: HardhatUserConfig = {
       chainId: 31337
     },
     bscTestnet: {
-      url: process.env.BSC_TESTNET_RPC_URL || "",
+      url: bscTestnetRpcUrl,
       chainId: 97,
-      accounts: privateKey ? [privateKey] : []
+      accounts: normalizedPrivateKey ? [normalizedPrivateKey] : []
     }
   },
   etherscan: {
