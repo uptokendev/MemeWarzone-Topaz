@@ -1,0 +1,26 @@
+{
+  "name": "memewarzone-minimal-topaz",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "compile": "hardhat compile",
+    "test": "hardhat test",
+    "lint": "tsc --noEmit",
+    "check:contract-size": "hardhat size-contracts || hardhat compile",
+    "deploy:testnet": "hardhat run deploy/00_deploy_minimal_topaz.ts --network bscTestnet",
+    "verify:testnet": "hardhat run scripts/verify-deployment.ts --network bscTestnet",
+    "smoke:testnet": "hardhat run scripts/smoke-test.ts --network bscTestnet",
+    "export:testnet": "hardhat run scripts/export-manifest.ts --network bscTestnet"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "^5.0.2",
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "hardhat": "^2.22.10",
+    "hardhat-contract-sizer": "^2.10.0",
+    "typescript": "^5.4.5",
+    "ts-node": "^10.9.2"
+  }
+}
