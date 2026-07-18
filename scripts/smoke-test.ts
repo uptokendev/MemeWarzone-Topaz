@@ -6,23 +6,30 @@ function assert(condition: boolean, message: string) {
   if (!condition) throw new Error(message);
 }
 
+function etherEnv(name: string, fallback: string) {
+  return ethers.parseEther(process.env[name] || fallback);
+}
+
 async function main() {
   const [deployer] = await ethers.getSigners();
   const trader = deployer;
   const lpReceiver = deployer;
   const manifest = JSON.parse(readFileSync(join("deployments", network.name, "minimal-topaz.json"), "utf8"));
+  const liquidityTokens = etherEnv("SMOKE_LIQUIDITY_TOKENS", "100");
+  const liquidityBnb = etherEnv("SMOKE_LIQUIDITY_BNB", "0.005");
+  const buyBnb = etherEnv("SMOKE_BUY_BNB", "0.001");
   const token = await ethers.deployContract("TestToken", ["Smoke Token", "SMOKE"]);
   await token.waitForDeployment();
-  await token.mint(deployer.address, ethers.parseEther("100000"));
-  await token.approve(manifest.contracts.Router, ethers.parseEther("10000"));
+  await token.mint(deployer.address, liquidityTokens * 20n);
+  await token.approve(manifest.contracts.Router, liquidityTokens);
 
   const router = await ethers.getContractAt("Router", manifest.contracts.Router);
   const factory = await ethers.getContractAt("PoolFactory", manifest.contracts.PoolFactory);
   assert((await router.defaultFactory()) === manifest.contracts.PoolFactory, "Router factory mismatch");
   assert((await router.weth()) === manifest.contracts.WBNB, "Router WBNB mismatch");
 
-  await router.addLiquidityETH(await token.getAddress(), false, ethers.parseEther("10000"), 0, 0, lpReceiver.address, Math.floor(Date.now() / 1000) + 3600, {
-    value: ethers.parseEther("10"),
+  await router.addLiquidityETH(await token.getAddress(), false, liquidityTokens, 0, 0, lpReceiver.address, Math.floor(Date.now() / 1000) + 3600, {
+    value: liquidityBnb,
   });
 
   const poolAddress = await factory.getPool(await token.getAddress(), manifest.contracts.WBNB, false);
@@ -41,7 +48,7 @@ async function main() {
 
   const route = [{ from: manifest.contracts.WBNB, to: await token.getAddress(), stable: false, factory: manifest.contracts.PoolFactory }];
   const traderTokenBeforeBuy = await token.balanceOf(trader.address);
-  await router.connect(trader).swapExactETHForTokens(0, route, trader.address, Math.floor(Date.now() / 1000) + 3600, { value: ethers.parseEther("0.1") });
+  await router.connect(trader).swapExactETHForTokens(0, route, trader.address, Math.floor(Date.now() / 1000) + 3600, { value: buyBnb });
 
   const traderTokenBought = (await token.balanceOf(trader.address)) - traderTokenBeforeBuy;
   assert(traderTokenBought > 0n, "Buy produced no smoke tokens");
@@ -66,6 +73,8 @@ async function main() {
   assert(lpAfterClaim === lpBeforeClaim && lpAfterClaim === lpBeforeTrades, "LP principal changed during smoke trades or fee claim");
 
   console.log(`Smoke test passed for pool ${poolAddress}`);
+  console.log(`Liquidity BNB: ${liquidityBnb.toString()}`);
+  console.log(`Buy BNB: ${buyBnb.toString()}`);
   console.log(`Claimed token fees: ${tokenClaimed.toString()}`);
   console.log(`Claimed WBNB fees: ${wbnbClaimed.toString()}`);
 }
