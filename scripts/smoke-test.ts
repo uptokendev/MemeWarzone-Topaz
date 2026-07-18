@@ -81,19 +81,18 @@ async function main() {
   await waitFor(token.connect(trader).approve(manifest.contracts.Router, sellAmount));
   await waitFor(router.connect(trader).swapExactTokensForETH(sellAmount, expectedSellOut, sellRoute, trader.address, Math.floor(Date.now() / 1000) + 3600));
 
-  const tokenBeforeClaim = await token.balanceOf(lpReceiver.address);
-  const wbnb = await ethers.getContractAt("TestWBNB", manifest.contracts.WBNB);
-  const wbnbBeforeClaim = await wbnb.balanceOf(lpReceiver.address);
+  const token0 = await pool.token0();
+  const [claim0, claim1] = await pool.connect(lpReceiver).claimFees.staticCall();
+  const tokenClaimed = token0.toLowerCase() === (await token.getAddress()).toLowerCase() ? claim0 : claim1;
+  const wbnbClaimed = token0.toLowerCase() === manifest.contracts.WBNB.toLowerCase() ? claim0 : claim1;
   const lpBeforeClaim = await pool.balanceOf(lpReceiver.address);
+
+  assert(tokenClaimed > 0n, "LP receiver has no launch-token fees claimable after sell");
+  assert(wbnbClaimed > 0n, "LP receiver has no WBNB fees claimable after buy");
 
   await waitFor(pool.connect(lpReceiver).claimFees());
 
-  const tokenClaimed = (await token.balanceOf(lpReceiver.address)) - tokenBeforeClaim;
-  const wbnbClaimed = (await wbnb.balanceOf(lpReceiver.address)) - wbnbBeforeClaim;
   const lpAfterClaim = await pool.balanceOf(lpReceiver.address);
-
-  assert(tokenClaimed > 0n, "LP receiver did not claim launch-token fees after sell");
-  assert(wbnbClaimed > 0n, "LP receiver did not claim WBNB fees after buy");
   assert(lpAfterClaim === lpBeforeClaim && lpAfterClaim === lpBeforeTrades, "LP principal changed during smoke trades or fee claim");
 
   console.log(`Smoke test passed for pool ${poolAddress}`);
