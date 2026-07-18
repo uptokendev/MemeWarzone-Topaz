@@ -10,6 +10,12 @@ function etherEnv(name: string, fallback: string) {
   return ethers.parseEther(process.env[name] || fallback);
 }
 
+async function waitFor(txPromise: Promise<any>) {
+  const tx = await txPromise;
+  await tx.wait();
+  return tx;
+}
+
 async function main() {
   const [deployer] = await ethers.getSigners();
   const trader = deployer;
@@ -18,19 +24,25 @@ async function main() {
   const liquidityTokens = etherEnv("SMOKE_LIQUIDITY_TOKENS", "100");
   const liquidityBnb = etherEnv("SMOKE_LIQUIDITY_BNB", "0.005");
   const buyBnb = etherEnv("SMOKE_BUY_BNB", "0.001");
-  const token = await ethers.deployContract("TestToken", ["Smoke Token", "SMOKE"]);
+  const suffix = Math.floor(Date.now() / 1000).toString(36).slice(-6).toUpperCase();
+  const token = await ethers.deployContract("TestToken", [`Smoke Token ${suffix}`, `SMK${suffix}`]);
   await token.waitForDeployment();
-  await token.mint(deployer.address, liquidityTokens * 20n);
-  await token.approve(manifest.contracts.Router, liquidityTokens);
+  await waitFor(token.mint(deployer.address, liquidityTokens * 20n));
+  await waitFor(token.approve(manifest.contracts.Router, liquidityTokens));
+
+  assert((await token.balanceOf(deployer.address)) >= liquidityTokens, "Deployer smoke-token balance is below liquidity amount");
+  assert((await token.allowance(deployer.address, manifest.contracts.Router)) >= liquidityTokens, "Router allowance is below liquidity amount");
 
   const router = await ethers.getContractAt("Router", manifest.contracts.Router);
   const factory = await ethers.getContractAt("PoolFactory", manifest.contracts.PoolFactory);
   assert((await router.defaultFactory()) === manifest.contracts.PoolFactory, "Router factory mismatch");
   assert((await router.weth()) === manifest.contracts.WBNB, "Router WBNB mismatch");
 
-  await router.addLiquidityETH(await token.getAddress(), false, liquidityTokens, 0, 0, lpReceiver.address, Math.floor(Date.now() / 1000) + 3600, {
-    value: liquidityBnb,
-  });
+  await waitFor(
+    router.addLiquidityETH(await token.getAddress(), false, liquidityTokens, 0, 0, lpReceiver.address, Math.floor(Date.now() / 1000) + 3600, {
+      value: liquidityBnb,
+    })
+  );
 
   const poolAddress = await factory.getPool(await token.getAddress(), manifest.contracts.WBNB, false);
   assert(poolAddress !== ethers.ZeroAddress, "Pool was not created");
@@ -48,21 +60,21 @@ async function main() {
 
   const route = [{ from: manifest.contracts.WBNB, to: await token.getAddress(), stable: false, factory: manifest.contracts.PoolFactory }];
   const traderTokenBeforeBuy = await token.balanceOf(trader.address);
-  await router.connect(trader).swapExactETHForTokens(0, route, trader.address, Math.floor(Date.now() / 1000) + 3600, { value: buyBnb });
+  await waitFor(router.connect(trader).swapExactETHForTokens(0, route, trader.address, Math.floor(Date.now() / 1000) + 3600, { value: buyBnb }));
 
   const traderTokenBought = (await token.balanceOf(trader.address)) - traderTokenBeforeBuy;
   assert(traderTokenBought > 0n, "Buy produced no smoke tokens");
 
   const sellRoute = [{ from: await token.getAddress(), to: manifest.contracts.WBNB, stable: false, factory: manifest.contracts.PoolFactory }];
-  await token.connect(trader).approve(manifest.contracts.Router, traderTokenBought);
-  await router.connect(trader).swapExactTokensForETH(traderTokenBought, 0, sellRoute, trader.address, Math.floor(Date.now() / 1000) + 3600);
+  await waitFor(token.connect(trader).approve(manifest.contracts.Router, traderTokenBought));
+  await waitFor(router.connect(trader).swapExactTokensForETH(traderTokenBought, 0, sellRoute, trader.address, Math.floor(Date.now() / 1000) + 3600));
 
   const tokenBeforeClaim = await token.balanceOf(lpReceiver.address);
   const wbnb = await ethers.getContractAt("TestWBNB", manifest.contracts.WBNB);
   const wbnbBeforeClaim = await wbnb.balanceOf(lpReceiver.address);
   const lpBeforeClaim = await pool.balanceOf(lpReceiver.address);
 
-  await pool.connect(lpReceiver).claimFees();
+  await waitFor(pool.connect(lpReceiver).claimFees());
 
   const tokenClaimed = (await token.balanceOf(lpReceiver.address)) - tokenBeforeClaim;
   const wbnbClaimed = (await wbnb.balanceOf(lpReceiver.address)) - wbnbBeforeClaim;
