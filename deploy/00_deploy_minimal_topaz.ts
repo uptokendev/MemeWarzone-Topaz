@@ -1,13 +1,17 @@
 import { ethers, network } from "hardhat";
 import { mkdirSync, writeFileSync } from "fs";
 import { join } from "path";
+import {
+  assertBscTestnetStagingNetwork,
+  buildBscTestnetStagingManifestConfiguration,
+  requireBscTestnetStagingVolatileFeeBps
+} from "../scripts/lib/bsc-testnet-staging";
 
 async function main() {
   const [deployer] = await ethers.getSigners();
-  const volatileFeeBps = Number(process.env.VOLATILE_FEE_BPS || "100");
-  if (volatileFeeBps !== 100) {
-    throw new Error("Minimal Topaz testnet deployment requires VOLATILE_FEE_BPS=100");
-  }
+  const chainId = Number((await ethers.provider.getNetwork()).chainId);
+  assertBscTestnetStagingNetwork(network.name, chainId);
+  const volatileFeeBps = requireBscTestnetStagingVolatileFeeBps(process.env.VOLATILE_FEE_BPS);
 
   const wbnb = await ethers.deployContract("TestWBNB");
   await wbnb.waitForDeployment();
@@ -39,7 +43,7 @@ async function main() {
 
   const manifest = {
     network: network.name,
-    chainId: Number((await ethers.provider.getNetwork()).chainId),
+    chainId,
     upstreamRepository: "topazdex/topaz-contacts",
     upstreamCommit: "858d93c0e595777aef9564124f634f4138be8f6d",
     deploymentCommit: process.env.GITHUB_SHA || "",
@@ -51,10 +55,7 @@ async function main() {
       FactoryRegistry: await registry.getAddress(),
       Router: await router.getAddress()
     },
-    configuration: {
-      volatileFeeBps,
-      graduationPoolStable: false
-    },
+    configuration: buildBscTestnetStagingManifestConfiguration(volatileFeeBps),
     transactions: {
       deployWBNB: wbnb.deploymentTransaction()?.hash || "",
       deployPoolImplementation: poolImplementation.deploymentTransaction()?.hash || "",
