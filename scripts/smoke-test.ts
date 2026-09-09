@@ -1,6 +1,7 @@
 import { ethers, network } from "hardhat";
 import { readFileSync } from "fs";
 import { join } from "path";
+import { requireBscTestnetStagingManifest } from "./lib/bsc-testnet-staging";
 
 function assert(condition: boolean, message: string) {
   if (!condition) throw new Error(message);
@@ -21,6 +22,7 @@ async function main() {
   const trader = deployer;
   const lpReceiver = deployer;
   const manifest = JSON.parse(readFileSync(join("deployments", network.name, "minimal-topaz.json"), "utf8"));
+  const requiredVolatileFeeBps = requireBscTestnetStagingManifest(manifest);
   const liquidityTokens = etherEnv("SMOKE_LIQUIDITY_TOKENS", "100");
   const liquidityBnb = etherEnv("SMOKE_LIQUIDITY_BNB", "0.005");
   const buyBnb = etherEnv("SMOKE_BUY_BNB", "0.001");
@@ -48,7 +50,10 @@ async function main() {
   const poolAddress = await factory.getPool(await token.getAddress(), manifest.contracts.WBNB, false);
   assert(poolAddress !== ethers.ZeroAddress, "Pool was not created");
   assert(await factory.isPool(poolAddress), "Factory does not recognize smoke pool");
-  assert((await factory.getFee(poolAddress, false)) === 100n, "Smoke pool volatile fee is not 100 bps");
+  assert(
+    (await factory.getFee(poolAddress, false)) === BigInt(requiredVolatileFeeBps),
+    `Smoke pool volatile fee is not ${requiredVolatileFeeBps} bps`
+  );
 
   const pool = await ethers.getContractAt("Pool", poolAddress);
   assert((await pool.stable()) === false, "Smoke pool is not volatile");
@@ -96,6 +101,7 @@ async function main() {
   assert(lpAfterClaim === lpBeforeClaim && lpAfterClaim === lpBeforeTrades, "LP principal changed during smoke trades or fee claim");
 
   console.log(`Smoke test passed for pool ${poolAddress}`);
+  console.log(`Volatile fee bps: ${requiredVolatileFeeBps}`);
   console.log(`Liquidity BNB: ${liquidityBnb.toString()}`);
   console.log(`Buy BNB: ${buyBnb.toString()}`);
   console.log(`Buy token quote: ${expectedBuyOut.toString()}`);
